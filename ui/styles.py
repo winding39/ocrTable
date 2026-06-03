@@ -68,4 +68,16 @@ QStatusBar {
     background: #FFFFFF; border-top: 1px solid #E8E8E8;
     font-size: 12px; color: #595959;
 }
+QDialog { background: #FFFFFF; }
+QLabel#viewerImage { background: #1A1A1A; }
+QTableWidget {
+    background: #FFFFFF; border: 1px solid #E8E8E8; border-radius: 6px;
+    gridline-color: #F0F0F0; font-size: 13px;
+}
+QTableWidget::item:selected { background: #E6F4FF; color: #262626; }
+QHeaderView::section {
+    background: #FAFAFA; border: none;
+    border-bottom: 1px solid #E8E8E8; border-right: 1px solid #E8E8E8;
+    padding: 8px 10px; font-weight: bold; color: #595959;
+}
 """

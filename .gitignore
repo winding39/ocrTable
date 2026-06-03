@@ -1,6 +1,7 @@
 # 环境与密钥
 .env
 data/app_settings.json
+data/history.json
 .venv/
 venv/
 

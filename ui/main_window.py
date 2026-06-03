@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 NAV_ITEMS = [
     ("capture", "📷  拍照识别"),
+    ("history", "📋  历史记录"),
     ("settings", "⚙  系统设定"),
 ]
 
@@ -119,6 +120,10 @@ class MainWindow(QMainWindow):
             page = CapturePage(main_window=self)
             page.ocr_completed.connect(self._on_ocr_completed)
             return page
+        if page_id == "history":
+            from ui.pages.history_page import HistoryPage
+
+            return HistoryPage(main_window=self)
         if page_id == "settings":
             from ui.pages.settings_page import SettingsPage
 
