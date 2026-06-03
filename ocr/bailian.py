@@ -51,6 +51,40 @@ def _post_json(url: str, headers: dict, payload: dict, *, timeout_sec: int = 120
     return json.loads(text)
 
 
+def log_ai_prompt(prompt_text: str, context: str = "") -> None:
+    try:
+        base = getattr(cfg, "PROMPT_LOG_FILE", None)
+        if not base:
+            return
+        log_dir = os.path.dirname(base)
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, f"ai_prompts_{datetime.now():%Y-%m-%d}.log")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(
+                f"\n{'=' * 70}\n[{datetime.now():%Y-%m-%d %H:%M:%S}] {context}\n"
+                f"{prompt_text}\n"
+            )
+    except Exception as exc:
+        logger.warning("记录提示词失败: %s", exc)
+
+
+def log_ai_recognition_result(body: str, context: str = "") -> None:
+    try:
+        base = getattr(cfg, "PROMPT_LOG_FILE", None)
+        if not base:
+            return
+        log_dir = os.path.dirname(base)
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, f"ai_prompts_{datetime.now():%Y-%m-%d}.log")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(
+                f"\n{'=' * 70}\n[{datetime.now():%Y-%m-%d %H:%M:%S}] "
+                f"【识别结果】{context}\n{body}\n"
+            )
+    except Exception as exc:
+        logger.warning("记录识别结果失败: %s", exc)
+
+
 def _usage_summary(resp: dict) -> str:
     usage = resp.get("usage") or {}
     in_tok = usage.get("input_tokens") or usage.get("prompt_tokens", "?")
@@ -185,6 +219,10 @@ class TableOCR:
         resp1 = self._call_vision_api(messages, json_mode=False, stage="Stage1-视觉转写")
         transcribed = resp1["choices"][0]["message"]["content"].strip()
         self._log(f"[Stage1-视觉转写] 转写完成，共 {len(transcribed)} 字")
+        log_ai_recognition_result(
+            transcribed,
+            f"Stage1 {self.image_label or os.path.basename(image_path)}",
+        )
 
         stage2 = cfg.get_stage2_prompt()
         user_text = f"{stage2}\n\n【输入】\n{transcribed}"
@@ -194,6 +232,10 @@ class TableOCR:
         data = _normalize_table_data(_parse_json(raw))
         self._log(
             f"识别完成：{len(data.get('headers', []))} 列，{len(data.get('rows', []))} 行"
+        )
+        log_ai_recognition_result(
+            raw,
+            f"Stage2 {self.image_label or os.path.basename(image_path)}",
         )
         return {
             "success": True,
@@ -228,7 +270,30 @@ class TableOCR:
         self._log(
             f"识别完成：{len(data.get('headers', []))} 列，{len(data.get('rows', []))} 行"
         )
+        log_ai_recognition_result(
+            raw,
+            f"单阶段 {self.image_label or os.path.basename(image_path)}",
+        )
         return {"success": True, "data": data, "raw_text": raw}
+
+    @staticmethod
+    def _log_api_usage(
+        resp: dict,
+        stage: str,
+        elapsed_sec: float,
+        *,
+        enable_thinking: bool | None = None,
+    ) -> None:
+        usage_line = (
+            f"耗时:{elapsed_sec:.1f}s {_usage_summary(resp)}"
+        )
+        if enable_thinking is not None:
+            usage_line = (
+                f"耗时:{elapsed_sec:.1f}s  深度思考:"
+                f"{'开启' if enable_thinking else '关闭'}  "
+                f"{_usage_summary(resp)}"
+            )
+        log_ai_prompt(usage_line, context=f"[用量统计] {stage}")
 
     def _call_vision_api(
         self, messages: list, json_mode: bool = False, stage: str = "视觉"
@@ -244,12 +309,22 @@ class TableOCR:
             "max_tokens": self.runtime.get("ocr_max_tokens", cfg.OCR_MAX_TOKENS),
             "temperature": 0.1,
         }
+        enable_thinking = None
         if "qwen3" in model.lower():
-            payload["enable_thinking"] = bool(
+            enable_thinking = bool(
                 self.runtime.get("vision_enable_thinking", False)
             )
+            payload["enable_thinking"] = enable_thinking
         if json_mode and "ocr" not in model.lower():
             payload["response_format"] = {"type": "json_object"}
+        for msg in messages:
+            for item in msg.get("content", []):
+                if isinstance(item, dict) and item.get("type") == "text":
+                    log_ai_prompt(
+                        item["text"],
+                        f"vision model={model} [{stage}]",
+                    )
+                    break
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         timeout = self.runtime.get("ocr_api_timeout", cfg.OCR_API_TIMEOUT)
         self._log(f"[{stage}] 模型={model} 请求中...")
@@ -257,6 +332,12 @@ class TableOCR:
         resp = _post_json(url, headers, payload, timeout_sec=timeout)
         elapsed = time.time() - t0
         self._log(f"[{stage}] 完成 耗时={elapsed:.1f}s {_usage_summary(resp)}")
+        self._log_api_usage(
+            resp,
+            f"vision model={model} [{stage}]",
+            elapsed,
+            enable_thinking=enable_thinking,
+        )
         return resp
 
     def _call_text_api(self, user_text: str, stage: str = "文本") -> dict:
@@ -273,6 +354,7 @@ class TableOCR:
         }
         if "ocr" not in model.lower():
             payload["response_format"] = {"type": "json_object"}
+        log_ai_prompt(user_text, f"text model={model} [{stage}]")
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         timeout = self.runtime.get("ocr_api_timeout", cfg.OCR_API_TIMEOUT)
         self._log(f"[{stage}] 模型={model} 请求中...")
@@ -280,6 +362,7 @@ class TableOCR:
         resp = _post_json(url, headers, payload, timeout_sec=timeout)
         elapsed = time.time() - t0
         self._log(f"[{stage}] 完成 耗时={elapsed:.1f}s {_usage_summary(resp)}")
+        self._log_api_usage(resp, f"text model={model} [{stage}]", elapsed)
         return resp
 
 

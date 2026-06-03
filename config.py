@@ -49,6 +49,26 @@ try:
 except ValueError:
     FLASK_PORT = 5000
 
+try:
+    CAMERA_INDEX = max(0, int(os.environ.get("CAMERA_INDEX", "0")))
+except ValueError:
+    CAMERA_INDEX = 0
+
+try:
+    CAPTURE_WIDTH = max(640, int(os.environ.get("CAPTURE_WIDTH", "1920")))
+except ValueError:
+    CAPTURE_WIDTH = 1920
+try:
+    CAPTURE_HEIGHT = max(480, int(os.environ.get("CAPTURE_HEIGHT", "1080")))
+except ValueError:
+    CAPTURE_HEIGHT = 1080
+try:
+    CAPTURE_JPEG_QUALITY = min(
+        100, max(1, int(os.environ.get("CAPTURE_JPEG_QUALITY", "95")))
+    )
+except ValueError:
+    CAPTURE_JPEG_QUALITY = 95
+
 IMAGES_DIR = os.path.join(BASE_DIR, "data", "images")
 EXPORTS_DIR = os.path.join(BASE_DIR, "data", "exports")
 SETTINGS_PATH = os.path.join(BASE_DIR, "data", "app_settings.json")
@@ -57,6 +77,7 @@ LOGS_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
+PROMPT_LOG_FILE = os.path.join(LOGS_DIR, "ai_prompts.log")
 
 DEFAULT_STAGE1_PROMPT = """你是表格 OCR 转写助手。请根据图片逐字转写所有印刷与手写文字，不要编造。
 
@@ -126,6 +147,53 @@ def get_ocr_two_stage() -> bool:
     return OCR_TWO_STAGE
 
 
+def get_vision_enable_thinking() -> bool:
+    s = load_app_settings()
+    if "vision_enable_thinking" in s:
+        return bool(s["vision_enable_thinking"])
+    return VISION_ENABLE_THINKING
+
+
+def get_camera_index() -> int:
+    s = load_app_settings()
+    if "camera_index" in s:
+        try:
+            return max(0, int(s["camera_index"]))
+        except (TypeError, ValueError):
+            pass
+    return CAMERA_INDEX
+
+
+def get_capture_width() -> int:
+    s = load_app_settings()
+    if "capture_width" in s:
+        try:
+            return max(640, int(s["capture_width"]))
+        except (TypeError, ValueError):
+            pass
+    return CAPTURE_WIDTH
+
+
+def get_capture_height() -> int:
+    s = load_app_settings()
+    if "capture_height" in s:
+        try:
+            return max(480, int(s["capture_height"]))
+        except (TypeError, ValueError):
+            pass
+    return CAPTURE_HEIGHT
+
+
+def get_capture_jpeg_quality() -> int:
+    s = load_app_settings()
+    if "capture_jpeg_quality" in s:
+        try:
+            return min(100, max(1, int(s["capture_jpeg_quality"])))
+        except (TypeError, ValueError):
+            pass
+    return CAPTURE_JPEG_QUALITY
+
+
 def get_public_settings() -> dict:
     """返回可暴露给前端的设置（API Key 脱敏）。"""
     s = load_app_settings()
@@ -146,6 +214,11 @@ def get_public_settings() -> dict:
         "ocr_two_stage": get_ocr_two_stage(),
         "ocr_max_tokens": s.get("ocr_max_tokens") or OCR_MAX_TOKENS,
         "ocr_api_timeout": s.get("ocr_api_timeout") or OCR_API_TIMEOUT,
+        "vision_enable_thinking": get_vision_enable_thinking(),
+        "camera_index": get_camera_index(),
+        "capture_width": get_capture_width(),
+        "capture_height": get_capture_height(),
+        "capture_jpeg_quality": get_capture_jpeg_quality(),
     }
 
 
@@ -162,7 +235,7 @@ def get_runtime_config() -> dict:
         "ocr_two_stage": get_ocr_two_stage(),
         "ocr_max_tokens": s.get("ocr_max_tokens") or OCR_MAX_TOKENS,
         "ocr_api_timeout": s.get("ocr_api_timeout") or OCR_API_TIMEOUT,
-        "vision_enable_thinking": s.get("vision_enable_thinking", VISION_ENABLE_THINKING),
+        "vision_enable_thinking": get_vision_enable_thinking(),
     }
 
 
@@ -184,6 +257,35 @@ def save_model_settings(payload: dict) -> None:
         s["text_structure_api_key"] = payload["text_structure_api_key"]
     if "ocr_two_stage" in payload:
         s["ocr_two_stage"] = bool(payload["ocr_two_stage"])
+    if "vision_enable_thinking" in payload:
+        s["vision_enable_thinking"] = bool(payload["vision_enable_thinking"])
+    save_app_settings(s)
+
+
+def save_device_settings(payload: dict) -> None:
+    s = load_app_settings()
+    if "camera_index" in payload:
+        try:
+            s["camera_index"] = max(0, int(payload["camera_index"]))
+        except (TypeError, ValueError):
+            pass
+    if "capture_width" in payload:
+        try:
+            s["capture_width"] = max(640, int(payload["capture_width"]))
+        except (TypeError, ValueError):
+            pass
+    if "capture_height" in payload:
+        try:
+            s["capture_height"] = max(480, int(payload["capture_height"]))
+        except (TypeError, ValueError):
+            pass
+    if "capture_jpeg_quality" in payload:
+        try:
+            s["capture_jpeg_quality"] = min(
+                100, max(1, int(payload["capture_jpeg_quality"]))
+            )
+        except (TypeError, ValueError):
+            pass
     save_app_settings(s)
 
 
@@ -208,6 +310,11 @@ def write_env_from_settings() -> None:
         "VISION_API_MODEL": s.get("vision_api_model") or VISION_API_MODEL,
         "TEXT_STRUCTURE_MODEL": s.get("text_structure_model") or TEXT_STRUCTURE_MODEL,
         "OCR_TWO_STAGE": "1" if get_ocr_two_stage() else "0",
+        "VISION_ENABLE_THINKING": "1" if get_vision_enable_thinking() else "0",
+        "CAMERA_INDEX": str(get_camera_index()),
+        "CAPTURE_WIDTH": str(get_capture_width()),
+        "CAPTURE_HEIGHT": str(get_capture_height()),
+        "CAPTURE_JPEG_QUALITY": str(get_capture_jpeg_quality()),
     }
     if s.get("vision_api_key"):
         mapping["VISION_API_KEY"] = s["vision_api_key"]

@@ -345,10 +345,10 @@ class CapturePage(QWidget):
         self._task_counter = 0
         self._task_status: dict[int, str] = {}
         self._xlsx_paths: list[str] = []
-        self._camera_index = int(os.environ.get("CAMERA_INDEX", "0"))
-        self._capture_w = int(os.environ.get("CAPTURE_WIDTH", "1920"))
-        self._capture_h = int(os.environ.get("CAPTURE_HEIGHT", "1080"))
-        self._jpeg_quality = int(os.environ.get("CAPTURE_JPEG_QUALITY", "95"))
+        self._camera_index = cfg.get_camera_index()
+        self._capture_w = cfg.get_capture_width()
+        self._capture_h = cfg.get_capture_height()
+        self._jpeg_quality = cfg.get_capture_jpeg_quality()
         self._build_ui()
 
     def _build_ui(self):
@@ -476,6 +476,30 @@ class CapturePage(QWidget):
         return card
 
     def refresh(self):
+        new_idx = cfg.get_camera_index()
+        new_w = cfg.get_capture_width()
+        new_h = cfg.get_capture_height()
+        new_q = cfg.get_capture_jpeg_quality()
+        device_changed = new_idx != self._camera_index
+        res_changed = (new_w, new_h) != (self._capture_w, self._capture_h)
+        if device_changed or res_changed:
+            if self._camera_active or self._camera_open_busy:
+                self._stop_camera(keep_cap=False)
+                if device_changed and res_changed:
+                    msg = (
+                        f"摄像头索引已改为 {new_idx}，分辨率已改为 {new_w}×{new_h}，"
+                        "请重新打开摄像头。"
+                    )
+                elif device_changed:
+                    msg = f"摄像头索引已改为 {new_idx}，请重新打开摄像头。"
+                else:
+                    msg = f"采集分辨率已改为 {new_w}×{new_h}，请重新打开摄像头。"
+                QMessageBox.information(self, "设备设置已更新", msg)
+            self._camera_index = new_idx
+            self._capture_w = new_w
+            self._capture_h = new_h
+        if new_q != self._jpeg_quality:
+            self._jpeg_quality = new_q
         self._load_existing_xlsx()
 
     def _load_existing_xlsx(self):

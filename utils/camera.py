@@ -151,3 +151,25 @@ def open_prepared_capture(
             except Exception:
                 pass
     return None, 0, 0
+
+
+def probe_cameras(max_index: int = 4) -> List[Tuple[int, str]]:
+    """探测可用摄像头；必须在主线程调用（cv2.VideoCapture 在 QThread 里会崩溃）。"""
+    found: List[Tuple[int, str]] = []
+    for i in range(int(max_index)):
+        cap = open_video_capture(i)
+        try:
+            if not cap.isOpened():
+                continue
+            frame, fw, fh = _warmup_read_valid_frame(cap, attempts=8)
+            if frame is None:
+                continue
+            found.append((i, f"摄像头 {i} ({fw}×{fh})"))
+        except Exception as e:
+            logger.debug("探测摄像头 %s 失败: %s", i, e)
+        finally:
+            try:
+                cap.release()
+            except Exception:
+                pass
+    return found
