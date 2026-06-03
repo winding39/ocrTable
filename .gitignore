@@ -1,0 +1,29 @@
+# 环境与密钥
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 运行时数据
+data/images/*
+data/exports/*
+logs/*
+*.xlsx
+!data/images/.gitkeep
+!data/exports/.gitkeep
+!logs/.gitkeep
+
+# IDE
+.cursor/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
